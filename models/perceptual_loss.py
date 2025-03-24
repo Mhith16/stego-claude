@@ -23,18 +23,23 @@ class VGGPerceptualLoss(nn.Module):
         
         self.blocks = nn.ModuleList(blocks)
         self.resize = resize
+        # Register buffers - these will be moved to the correct device 
+        # when model.to(device) is called
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
         
     def forward(self, input, target):
+        # Make sure all parts are on the same device
+        device = input.device
+        
         if input.shape[1] == 1:
             # If grayscale, repeat to make 3 channels
             input = input.repeat(1, 3, 1, 1)
             target = target.repeat(1, 3, 1, 1)
             
         # Prepare input by normalizing for VGG
-        input = (input - self.mean) / self.std
-        target = (target - self.mean) / self.std
+        input = (input - self.mean.to(device)) / self.std.to(device)
+        target = (target - self.mean.to(device)) / self.std.to(device)
         
         if self.resize:
             # VGG expects minimum 224x224 images

@@ -75,7 +75,7 @@ def train(args):
         lambda_adv=args.lambda_adv,
         lambda_perceptual=args.lambda_perceptual,
         lambda_ssim=args.lambda_ssim
-    )
+    ).to(device)
     
     # Initialize optimizers with different learning rates for pretrained parts
     optimizer_params = [
