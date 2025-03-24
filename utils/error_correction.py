@@ -25,14 +25,20 @@ class ReedSolomonEncoder:
         Encode binary data with Reed-Solomon
         For a complete implementation, use a proper RS library
         """
+        # Convert tensor to numpy array if needed
+        if torch.is_tensor(data):
+            data_np = data.detach().cpu().numpy().astype(np.int32)
+        else:
+            data_np = np.array(data, dtype=np.int32)
+            
         # In a real implementation, this would use Galois Field arithmetic
         # For demo purposes, we'll use a simple parity-based approach
-        if len(data) > self.k:
+        if len(data_np) > self.k:
             # Truncate if too long
-            data = data[:self.k]
-        elif len(data) < self.k:
+            data_np = data_np[:self.k]
+        elif len(data_np) < self.k:
             # Pad with zeros if too short
-            data = np.pad(data, (0, self.k - len(data)))
+            data_np = np.pad(data_np, (0, self.k - len(data_np)))
             
         # Create simple parity bits (in real RS, this would be more complex)
         parity = []
@@ -41,33 +47,48 @@ class ReedSolomonEncoder:
             indices = [j for j in range(self.k) if (j & (i+1)) != 0]
             parity_bit = 0
             for idx in indices:
-                parity_bit ^= data[idx]
+                parity_bit = parity_bit ^ int(data_np[idx])  # Use integer XOR
             parity.append(parity_bit)
             
         # Combine data and parity
-        encoded = np.concatenate([data, np.array(parity)])
-        return encoded
+        encoded = np.concatenate([data_np, np.array(parity, dtype=np.int32)])
+        
+        # Convert back to tensor if input was a tensor
+        if torch.is_tensor(data):
+            return torch.tensor(encoded, dtype=torch.float32, device=data.device)
+        else:
+            return encoded
         
     def decode(self, received):
         """
         Decode Reed-Solomon encoded data
         For a complete implementation, use a proper RS library
         """
+        # Convert tensor to numpy array if needed
+        if torch.is_tensor(received):
+            received_np = received.detach().cpu().numpy().astype(np.int32)
+        else:
+            received_np = np.array(received, dtype=np.int32)
+            
         # Extract data and parity parts
-        data_part = received[:self.k]
-        parity_part = received[self.k:]
+        data_part = received_np[:self.k]
+        parity_part = received_np[self.k:]
         
         # Check parity and correct errors if possible
         corrected_data = data_part.copy()
         
         # Calculate syndrome (in real RS, this would use proper GF arithmetic)
         syndrome = []
-        for i in range(self.redundancy):
+        for i in range(min(self.redundancy, len(parity_part))):
             indices = [j for j in range(self.k) if (j & (i+1)) != 0]
             parity_check = 0
             for idx in indices:
-                parity_check ^= data_part[idx]
-            syndrome.append(parity_check ^ parity_part[i])
+                if idx < len(data_part):
+                    parity_check = parity_check ^ int(data_part[idx])
+            if i < len(parity_part):
+                syndrome.append(parity_check ^ int(parity_part[i]))
+            else:
+                syndrome.append(parity_check)
         
         # If syndrome is all zeros, no errors detected
         if sum(syndrome) == 0:
@@ -80,7 +101,7 @@ class ReedSolomonEncoder:
             if sum(syndrome) == 1:
                 error_pos = syndrome.index(1)
                 if error_pos < self.k:
-                    corrected_data[error_pos] ^= 1  # Flip the erroneous bit
+                    corrected_data[error_pos] = 1 - corrected_data[error_pos]  # Flip the erroneous bit
                 confidence = 0.9  # High confidence for single error
             else:
                 # For multi-bit errors, use heuristic
@@ -88,7 +109,11 @@ class ReedSolomonEncoder:
         except:
             confidence = 0.5  # Medium confidence
             
-        return corrected_data, confidence
+        # Convert back to tensor if input was a tensor
+        if torch.is_tensor(received):
+            return torch.tensor(corrected_data, dtype=torch.float32, device=received.device), confidence
+        else:
+            return corrected_data, confidence
 
 
 class RedundantPatientDataProcessor:
@@ -108,16 +133,16 @@ class RedundantPatientDataProcessor:
         """Encode a single field with multiple redundancy layers"""
         # 1. Convert to ASCII binary
         field_binary = ''.join([format(ord(c), '08b') for c in field_value])
-        field_bits = np.array([int(bit) for bit in field_binary], dtype=np.float32)
+        field_bits = np.array([int(bit) for bit in field_binary], dtype=np.int32)
         
         # 2. Calculate checksum
         checksum = self.compute_crc(field_value)
         checksum_binary = format(checksum, '032b')  # 32-bit CRC
-        checksum_bits = np.array([int(bit) for bit in checksum_binary], dtype=np.float32)
+        checksum_bits = np.array([int(bit) for bit in checksum_binary], dtype=np.int32)
         
         # 3. Create field header (field name encoded)
         header_binary = ''.join([format(ord(c), '08b') for c in field_name])
-        header_bits = np.array([int(bit) for bit in header_binary], dtype=np.float32)
+        header_bits = np.array([int(bit) for bit in header_binary], dtype=np.int32)
         
         # 4. Combine field data, header, and checksum
         field_chunk = np.concatenate([header_bits, field_bits, checksum_bits])
@@ -167,12 +192,12 @@ class RedundantPatientDataProcessor:
         # Full record with all fields together
         full_record = f"NAME:{name};AGE:{age};ID:{patient_id}"
         full_binary = ''.join([format(ord(c), '08b') for c in full_record])
-        full_bits = np.array([int(bit) for bit in full_binary], dtype=np.float32)
+        full_bits = np.array([int(bit) for bit in full_binary], dtype=np.int32)
         
         # CRC for the full record
         full_checksum = self.compute_crc(full_record)
         full_checksum_binary = format(full_checksum, '032b')
-        full_checksum_bits = np.array([int(bit) for bit in full_checksum_binary], dtype=np.float32)
+        full_checksum_bits = np.array([int(bit) for bit in full_checksum_binary], dtype=np.int32)
         
         # Combine and encode with RS
         full_chunk = np.concatenate([full_bits, full_checksum_bits])
@@ -225,6 +250,7 @@ class RedundantPatientDataProcessor:
                 decoded_data.append((data, confidence))
             except Exception as e:
                 # Skip corrupted chunks
+                print(f"Warning: Skipping corrupted chunk: {e}")
                 continue
         
         # Process decoded chunks to find fields
@@ -276,8 +302,9 @@ class RedundantPatientDataProcessor:
                         # Try to decode as full record
                         if ";" in field_text and ":" in field_text:
                             full_record_candidates.append((field_text, adjusted_confidence))
-            except:
+            except Exception as e:
                 # Skip corrupted chunks
+                print(f"Warning: Error processing decoded chunk: {e}")
                 continue
         
         # Process full record candidates
@@ -294,7 +321,8 @@ class RedundantPatientDataProcessor:
                             age_candidates.append((value, confidence * 0.9))
                         elif "ID" in field_type and value:
                             id_candidates.append((value, confidence * 0.9))
-            except:
+            except Exception as e:
+                print(f"Warning: Error processing full record: {e}")
                 continue
         
         # Select best candidate for each field based on confidence and frequency
@@ -320,6 +348,9 @@ class RedundantPatientDataProcessor:
                 avg_conf = value_confidences[value] / value_counts[value]
                 scores[value] = value_counts[value] * avg_conf
             
+            if not scores:
+                return "", 0.0
+                
             # Select value with highest score
             best_value = max(scores.items(), key=lambda x: x[1])[0]
             best_confidence = value_confidences[best_value] / value_counts[best_value]
