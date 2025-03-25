@@ -164,29 +164,31 @@ class RedundantPatientDataProcessor:
         name_match = re.search(r'Name:\s*(.*?)(?:\n|$)', patient_data)
         age_match = re.search(r'Age:\s*(.*?)(?:\n|$)', patient_data)
         id_match = re.search(r'ID:\s*(.*?)(?:\n|$)', patient_data)
-        
+        print(name_match, age_match, id_match)
         # Get values or defaults
         name = name_match.group(1).strip() if name_match else ""
         age = age_match.group(1).strip() if age_match else ""
         patient_id = id_match.group(1).strip() if id_match else ""
+        print(name, age, patient_id)
         
         # Primary encoding for each field
         name_encoded = self.encode_field_with_redundancy("NAME", name)
         age_encoded = self.encode_field_with_redundancy("AGE", age)
         id_encoded = self.encode_field_with_redundancy("ID", patient_id)
+        print(name_encoded, age_encoded, id_encoded)
         
         # Create redundant copies of critical fields (name and ID)
-        all_chunks = []
-        
+        all_chunks = (name_encoded + age_encoded + id_encoded+ "\n") * 3
+                
         # For critical fields (name and ID), create multiple copies
-        for _ in range(self.redundancy_copies):
-            all_chunks.append(name_encoded)
-            all_chunks.append(id_encoded)
-        
-        # Age is less critical - add fewer copies
-        all_chunks.append(age_encoded)
-        if self.redundancy_copies > 1:
-            all_chunks.append(age_encoded)  # Just one extra copy
+        # for _ in range(self.redundancy_copies):
+        #     all_chunks.append(name_encoded)
+        #     all_chunks.append(id_encoded)
+        #  00101001001010100000101001
+        # # Age is less critical - add fewer copies
+        # all_chunks.append(age_encoded)
+        # if self.redundancy_copies > 1:
+        #     all_chunks.append(age_encoded)  # Just one extra copy
             
         # Also add a complete record in another format for redundancy
         # Full record with all fields together
@@ -200,15 +202,15 @@ class RedundantPatientDataProcessor:
         full_checksum_bits = np.array([int(bit) for bit in full_checksum_binary], dtype=np.int32)
         
         # Combine and encode with RS
-        full_chunk = np.concatenate([full_bits, full_checksum_bits])
-        encoded_full = self.rs_encoder.encode(full_chunk)
+        # full_chunk = np.concatenate([full_bits, full_checksum_bits])
+        # encoded_full = self.rs_encoder.encode(full_chunk)
         
         # Add to chunks
-        all_chunks.append(encoded_full)
+        # all_chunks.append(encoded_full)
             
         # Flatten all chunks
-        all_bits = np.concatenate(all_chunks)
-        
+        # all_bits = np.concatenate(all_chunks)
+        all_bits = full_binary + all_chunks
         # Ensure fixed length by padding or truncating
         if len(all_bits) > self.max_message_length:
             print(f"Warning: Encoded data length ({len(all_bits)}) exceeds maximum message length ({self.max_message_length}). Truncating.")
