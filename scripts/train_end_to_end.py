@@ -151,7 +151,8 @@ def train(args):
         
         # Progress bar
         train_bar = tqdm(train_loader, desc=f"Training Epoch {epoch+1}")
-        
+        # Then in your training loop, before using the messages:
+        messages = adjust_message_size(messages, target_size=1024)
         for batch_idx, data in enumerate(train_bar):
             images = data['image'].to(device)
             messages = data['patient_data'].to(device)
@@ -388,6 +389,21 @@ def train(args):
     
     # Close tensorboard writer
     writer.close()
+
+# Add this function to your train_end_to_end.py file
+def adjust_message_size(messages, target_size=1024):
+    """Resize messages to match the expected size by truncating or padding"""
+    if messages.size(1) == target_size:
+        return messages
+        
+    if messages.size(1) > target_size:
+        # Truncate
+        return messages[:, :target_size]
+    else:
+        # Pad with zeros
+        padding = torch.zeros(messages.size(0), target_size - messages.size(1), 
+                             device=messages.device)
+        return torch.cat([messages, padding], dim=1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train enhanced steganography models")
