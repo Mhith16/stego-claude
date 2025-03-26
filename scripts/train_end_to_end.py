@@ -21,6 +21,20 @@ from utils.data_loader import get_data_loaders
 from utils.metrics import compute_psnr, compute_ssim, compute_bit_accuracy
 from utils.error_correction import PatientDataProcessor
 
+def adjust_message_size(messages, target_size=1024):
+    """Resize messages to match the expected size by truncating or padding"""
+    if messages.size(1) == target_size:
+        return messages
+        
+    if messages.size(1) > target_size:
+        # Truncate
+        return messages[:, :target_size]
+    else:
+        # Pad with zeros
+        padding = torch.zeros(messages.size(0), target_size - messages.size(1), 
+                             device=messages.device)
+        return torch.cat([messages, padding], dim=1)
+
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -169,7 +183,8 @@ def train(args):
             # Generate feature weights and stego images
             with torch.no_grad():
                 feature_weights = feature_analyzer(images)
-                stego_images = encoder(images, messages, feature_weights)
+                stego_images = encoder(images, adjust_message_size(messages), feature_weights)
+
             
             # Real and fake predictions
             real_preds = discriminator(images)
@@ -207,7 +222,7 @@ def train(args):
             encoder_loss_dict = loss_fn.encoder_loss(images, stego_images, disc_preds)
             encoder_loss = encoder_loss_dict['total']
             
-            decoder_loss_dict = loss_fn.decoder_loss(adjust_message_size(messages, target_size=1024), decoded_messages)
+            decoder_loss_dict = loss_fn.decoder_loss(adjust_message_size(messages), decoded_messages)
             decoder_loss = decoder_loss_dict['total']
             
             # Combined loss - this is the key change
@@ -232,7 +247,9 @@ def train(args):
             with torch.no_grad():
                 train_metrics['psnr'] += compute_psnr(images, stego_images)
                 train_metrics['ssim'] += compute_ssim(images, stego_images)
-                train_metrics['bit_accuracy'] += compute_bit_accuracy(messages, decoded_messages)
+                train_metrics['bit_accuracy'] += compute_bit_accuracy(adjust_message_size(messages), decoded_messages)
+
+
             
             # Update progress bar
             train_bar.set_postfix({
@@ -392,20 +409,6 @@ def train(args):
     # Close tensorboard writer
     writer.close()
 
-# Add this function to your train_end_to_end.py file
-def adjust_message_size(messages, target_size=1024):
-    """Resize messages to match the expected size by truncating or padding"""
-    if messages.size(1) == target_size:
-        return messages
-        
-    if messages.size(1) > target_size:
-        # Truncate
-        return messages[:, :target_size]
-    else:
-        # Pad with zeros
-        padding = torch.zeros(messages.size(0), target_size - messages.size(1), 
-                             device=messages.device)
-        return torch.cat([messages, padding], dim=1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train enhanced steganography models")
