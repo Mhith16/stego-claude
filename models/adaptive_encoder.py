@@ -23,7 +23,7 @@ class AdaptiveResidualBlock(nn.Module):
         residual = self.skip(x)
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        out += residual
+        out = out + residual  # Non-inplace addition
         return F.relu(out)
 
 class FrequencyDomainEmbedding(nn.Module):
@@ -67,22 +67,23 @@ class FrequencyDomainEmbedding(nn.Module):
 
 class AdaptiveSteganographyEncoder(nn.Module):
     """Enhanced encoder with adaptive embedding strength and frequency domain options"""
-    def __init__(self, image_channels=1, embedding_mode='spatial'):
+    def __init__(self, image_channels=1, embedding_mode='spatial', message_length=1024):
         super(AdaptiveSteganographyEncoder, self).__init__()
         
         self.embedding_mode = embedding_mode  # 'spatial' or 'frequency'
+        self.message_length = message_length
         
         # Initial convolution
         self.conv1 = nn.Conv2d(image_channels, 32, kernel_size=3, padding=1)
         
-        # Process the message
+        # Process the message - updated to handle variable message length
         self.prep_msg = nn.Sequential(
-            nn.Linear(1024, 1024),  # Assuming message is 1024 bits
+            nn.Linear(message_length, message_length),  # Now configurable
             nn.ReLU(inplace=True)
         )
         
         # Message embedding layer
-        self.embed_msg = nn.Linear(1024, 64*64)  # Reshape to spatial dimension
+        self.embed_msg = nn.Linear(message_length, 64*64)  # Reshape to spatial dimension
         
         # Residual blocks with increasing channels
         self.res_block1 = AdaptiveResidualBlock(32 + 1, 64)  # +1 for message channel
@@ -129,7 +130,7 @@ class AdaptiveSteganographyEncoder(nn.Module):
         x = self.conv1(image)  # [B, 32, H, W]
         
         # Process the message
-        msg = self.prep_msg(message)  # [B, 1024]
+        msg = self.prep_msg(message)  # [B, message_length]
         
         # Embed message into spatial feature map
         msg_spatial = self.embed_msg(msg)  # [B, 64*64]
