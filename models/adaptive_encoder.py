@@ -67,23 +67,23 @@ class FrequencyDomainEmbedding(nn.Module):
 
 class AdaptiveSteganographyEncoder(nn.Module):
     """Enhanced encoder with adaptive embedding strength and frequency domain options"""
-    def __init__(self, image_channels=1, embedding_mode='spatial', message_length=1024):
+    def __init__(self, image_channels=1, embedding_mode='spatial'):
         super(AdaptiveSteganographyEncoder, self).__init__()
         
         self.embedding_mode = embedding_mode  # 'spatial' or 'frequency'
-        self.message_length = message_length
         
         # Initial convolution
         self.conv1 = nn.Conv2d(image_channels, 32, kernel_size=3, padding=1)
         
-        # Process the message - updated to handle variable message length
+        # Process the message - using dynamic layers
+        self.fixed_message_length = 1024  # The original size the model expects
         self.prep_msg = nn.Sequential(
-            nn.Linear(message_length, message_length),  # Now configurable
+            nn.Linear(self.fixed_message_length, self.fixed_message_length),
             nn.ReLU(inplace=True)
         )
         
         # Message embedding layer
-        self.embed_msg = nn.Linear(message_length, 64*64)  # Reshape to spatial dimension
+        self.embed_msg = nn.Linear(self.fixed_message_length, 64*64)  # Reshape to spatial dimension
         
         # Residual blocks with increasing channels
         self.res_block1 = AdaptiveResidualBlock(32 + 1, 64)  # +1 for message channel
@@ -96,6 +96,9 @@ class AdaptiveSteganographyEncoder(nn.Module):
         
         # Frequency domain embedding layer (optional)
         self.freq_embedding = FrequencyDomainEmbedding()
+        
+        # Dynamic adaptation layers
+        self.dynamic_msg_adapter = None
         
         # Initialize weights
         self._initialize_weights()
@@ -113,6 +116,24 @@ class AdaptiveSteganographyEncoder(nn.Module):
                 nn.init.normal_(m.weight, 0, 0.01)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+    
+    def _adjust_message_size(self, message):
+        """Dynamically handle message sizes that don't match what the model expects"""
+        # Check if we need to adjust
+        if message.size(1) == self.fixed_message_length:
+            return message
+        
+        # Create a dynamic adapter if needed
+        if self.dynamic_msg_adapter is None or self.dynamic_msg_adapter.in_features != message.size(1):
+            self.dynamic_msg_adapter = nn.Linear(message.size(1), self.fixed_message_length).to(message.device)
+            # Initialize with identity-like weights for minimal distortion
+            nn.init.zeros_(self.dynamic_msg_adapter.weight)
+            min_size = min(message.size(1), self.fixed_message_length)
+            for i in range(min_size):
+                self.dynamic_msg_adapter.weight[i, i] = 1.0
+        
+        # Apply the adapter
+        return self.dynamic_msg_adapter(message)
         
     def forward(self, image, message, feature_weights=None):
         # If no feature weights provided, use uniform weights
@@ -129,8 +150,11 @@ class AdaptiveSteganographyEncoder(nn.Module):
         # Initial image processing
         x = self.conv1(image)  # [B, 32, H, W]
         
+        # Adjust message size if needed
+        adjusted_message = self._adjust_message_size(message)
+        
         # Process the message
-        msg = self.prep_msg(message)  # [B, message_length]
+        msg = self.prep_msg(adjusted_message)  # [B, fixed_message_length]
         
         # Embed message into spatial feature map
         msg_spatial = self.embed_msg(msg)  # [B, 64*64]
@@ -171,8 +195,11 @@ class AdaptiveSteganographyEncoder(nn.Module):
         # Initial image processing to get residual
         x = self.conv1(image)
         
+        # Adjust message size if needed
+        adjusted_message = self._adjust_message_size(message)
+        
         # Process the message
-        msg = self.prep_msg(message)
+        msg = self.prep_msg(adjusted_message)
         
         # Process through residual blocks - this determines HOW to embed
         # rather than the actual embedding
