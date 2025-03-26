@@ -152,7 +152,7 @@ def train(args):
         # Progress bar
         train_bar = tqdm(train_loader, desc=f"Training Epoch {epoch+1}")
         # Then in your training loop, before using the messages:
-        messages = adjust_message_size(messages, target_size=1024)
+        # messages = adjust_message_size(messages, target_size=1024)
         for batch_idx, data in enumerate(train_bar):
             images = data['image'].to(device)
             messages = data['patient_data'].to(device)
@@ -207,7 +207,7 @@ def train(args):
             encoder_loss_dict = loss_fn.encoder_loss(images, stego_images, disc_preds)
             encoder_loss = encoder_loss_dict['total']
             
-            decoder_loss_dict = loss_fn.decoder_loss(messages, decoded_messages)
+            decoder_loss_dict = loss_fn.decoder_loss(adjust_message_size(messages, target_size=1024), decoded_messages)
             decoder_loss = decoder_loss_dict['total']
             
             # Combined loss - this is the key change
@@ -310,6 +310,8 @@ def train(args):
                 
                 # Generate stego images
                 feature_weights = feature_analyzer(images)
+                # Then in your training loop, before using the messages:
+                messages = adjust_message_size(messages, target_size=1024)
                 stego_images = encoder(images, messages, feature_weights)
                 
                 # Test with different noise types
