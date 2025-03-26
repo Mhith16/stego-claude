@@ -10,17 +10,20 @@ class XrayDataset(Dataset):
     """
     Dataset for X-ray images and patient data text files
     """
-    def __init__(self, xray_dir, label_dir, transform=None, image_size=(256, 256)):
+    def __init__(self, xray_dir, label_dir, transform=None, image_size=(256, 256), message_length=1024):
         """
         Args:
             xray_dir (str): Directory with X-ray images
             label_dir (str): Directory with patient data text files
             transform (callable, optional): Optional transform to be applied on the images
             image_size (tuple): Target image size (width, height)
+            message_length (int): Length of binary message
         """
         self.xray_dir = xray_dir
         self.label_dir = label_dir
         self.image_size = image_size
+        self.message_length = message_length
+    # ...rest of the method...
         
         # Default transform if none is provided
         if transform is None:
@@ -67,7 +70,7 @@ class XrayDataset(Dataset):
             patient_data = f.read().strip()
         
         # Convert patient data to binary representation
-        binary_data = self._text_to_binary(patient_data)
+        binary_data = self._text_to_binary(patient_data, self.message_length)
         
         return {
             'image': image,
@@ -76,16 +79,17 @@ class XrayDataset(Dataset):
             'file_name': xray_file
         }
     
-    def _text_to_binary(self, text):
+    def _text_to_binary(self, text, max_length=None):
         """Convert text to binary tensor representation"""
+        # Use the message_length parameter or default to 1024
+        if max_length is None:
+            max_length = 1024
+            
         # Convert each character to its ASCII binary representation
         binary = ''.join([format(ord(c), '08b') for c in text])
         
         # Convert to tensor
         binary_tensor = torch.tensor([int(bit) for bit in binary], dtype=torch.float32)
-        
-        # For now, using a fixed size tensor - we'll later handle variable lengths properly
-        max_length = 1024  # This will be adjusted based on your requirements
         
         if len(binary_tensor) > max_length:
             binary_tensor = binary_tensor[:max_length]
@@ -96,7 +100,7 @@ class XrayDataset(Dataset):
         
         return binary_tensor
 
-def get_data_loaders(xray_dir, label_dir, batch_size=4, transform=None, val_split=0.2, image_size=(256, 256)):
+def get_data_loaders(xray_dir, label_dir, batch_size=4, transform=None, val_split=0.2, image_size=(256, 256), message_length=1024):
     """Create train and validation data loaders"""
     # Debug info
     print(f"Loading data from:")
@@ -116,7 +120,7 @@ def get_data_loaders(xray_dir, label_dir, batch_size=4, transform=None, val_spli
     print(f"Found {len(xray_files)} X-ray images and {len(label_files)} label files")
     
     # Create dataset
-    dataset = XrayDataset(xray_dir, label_dir, transform, image_size)
+    dataset = XrayDataset(xray_dir, label_dir, transform, image_size, message_length)
     
     print(f"Dataset contains {len(dataset)} valid samples")
     

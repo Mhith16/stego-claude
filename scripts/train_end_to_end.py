@@ -43,8 +43,8 @@ def train(args):
         args.label_dir,
         batch_size=args.batch_size,
         val_split=args.val_split,
-        image_size=(args.image_width, args.image_height)
-        # We're not passing processor since the original data_loader doesn't support it
+        image_size=(args.image_width, args.image_height),
+        message_length=args.message_length  # Add this line
     )
     
     # Initialize models
